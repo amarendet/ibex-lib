@@ -48,6 +48,16 @@ public:
     DefaultSolver(System& sys, const Vector& eps_x_min, double eps_x_max=default_eps_x_max, bool dfs=true, double random_seed=default_random_seed);
 
 	/**
+	 * \brief Create a default solver.
+	 *
+	 * \param sys  - The system to solve
+	 * \param eps_x_min - Criterion for stopping bisection (absolute precision)
+	 * \param eps_x_max - Criterion for forcing bisection  (absolute precision)
+	 * \param buffer    - Cell buffer to be used by the solver
+	 */
+    DefaultSolver(System& sys, double eps_x_min=default_eps_x_min, double eps_x_max=default_eps_x_max, CellBuffer* buffer=nullptr, double random_seed=default_random_seed);
+	
+	/**
 	 * \brief Default minimal width: 1e-6.
 	 */
 	static const double default_eps_x_min;

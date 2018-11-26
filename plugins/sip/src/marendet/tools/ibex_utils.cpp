@@ -92,6 +92,24 @@ std::string print_mma(const IntervalVector& iv) {
 	return res;
 }
 
+std::string print_mma(const std::vector<IntervalVector>& path) {
+	std::string res = "{";
+	for(int i = 0; i < path.size()-1; ++i) {
+		res += print_mma(path[i]) + ",";
+	}
+	res += print_mma(path[path.size()-1]) + "}";
+	return res;
+}
+
+std::string print_mma_path(const std::vector<IntervalVector>& path) {
+	std::string res = "{";
+	for(int i = 0; i < path.size()-1; ++i) {
+		res += print_mma(path[i].mid()) + ",";
+	}
+	res += print_mma(path[path.size()-1].mid()) + "}";
+	return res;
+}
+
 bool isfinite(const Vector& v) {
 	for (int i = 0; i < v.size(); ++i) {
 		if (!std::isfinite(v[i]))

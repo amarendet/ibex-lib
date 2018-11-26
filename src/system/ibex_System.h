@@ -15,6 +15,7 @@
 #include "ibex_Setting.h"
 
 #include <vector>
+#include <map>
 #include "ibex_NumConstraint.h"
 
 
@@ -250,6 +251,11 @@ public:
 	 * If this system represents an unconstrained optimization problem,
 	 * this array is zero-sized. */
 	Array<NumConstraint> ctrs;
+
+	/**
+	 * Named constants.
+	 */
+	std::map<std::string, std::reference_wrapper<const ExprConstant>> csts;
 
 protected:
 	/** Uninitialized system */

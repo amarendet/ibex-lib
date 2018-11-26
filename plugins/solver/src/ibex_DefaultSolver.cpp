@@ -121,4 +121,17 @@ DefaultSolver::DefaultSolver(System& sys, const Vector& eps_x_min, double eps_x_
 
 }
 
+DefaultSolver::DefaultSolver(System& sys, double eps_x_min, double eps_x_max,
+		CellBuffer* buffer, double random_seed) : Solver(sys, rec(ctc(sys,eps_x_min)),
+		get_square_eq_sys(*this, sys)!=NULL?
+				(Bsc&) rec(new SmearSumRelative(*get_square_eq_sys(*this, sys), eps_x_min)) :
+				(Bsc&) rec(new RoundRobin(eps_x_min)),
+				*buffer,
+				Vector(sys.nb_var,eps_x_min), Vector(sys.nb_var,eps_x_max)),
+		sys(sys) {
+
+	RNG::srand(random_seed);
+
+}
+
 } // end namespace ibex

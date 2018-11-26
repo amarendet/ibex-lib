@@ -35,6 +35,8 @@ double sip_goal_from_ext_box(const Vector& ext_box);
 
 std::string print_mma(const Vector& iv);
 std::string print_mma(const IntervalVector& iv);
+std::string print_mma(const std::vector<IntervalVector>& path);
+std::string print_mma_path(const std::vector<IntervalVector>& path);
 } // end namespace ibex
 
 #endif // __SIP_IBEX_UTILS_H__

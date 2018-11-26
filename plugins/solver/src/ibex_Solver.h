@@ -82,7 +82,7 @@ public:
 	/**
 	 * \brief Destructor.
 	 */
-	~Solver();
+	virtual ~Solver();
 
 	/**
 	 * \brief Solve the system (non-interactive mode).

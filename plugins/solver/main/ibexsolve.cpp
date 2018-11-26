@@ -23,6 +23,77 @@
 using namespace std;
 using namespace ibex;
 
+struct VectorHelper {
+	ibex::Vector value = ibex::Vector(1, 0.0);
+};
+
+struct IntervalVectorHelper {
+	ibex::IntervalVector value = ibex::IntervalVector(1, 0.0);
+};
+
+namespace args {
+template<>
+struct ValueReader<VectorHelper> {
+	bool operator()(const std::string& name, const std::string& value, VectorHelper& dest) {
+		std::vector<double> numbers;
+		if (value[0] != '(' || value[value.size() - 1] != ')') {
+			throw args::ParseError(value + " is not a valid vector for " + name);
+		}
+		size_t pos = value.find(';', 1);
+		size_t last_pos = 1;
+		while (pos != string::npos) {
+			try {
+				numbers.emplace_back(std::stod(value.substr(last_pos, pos - last_pos)));
+			} catch (std::invalid_argument& e) {
+				throw args::ParseError(value + " is not a valid vector for " + name + ": " + e.what());
+			}
+			last_pos = pos + 1;
+			pos = value.find_first_of(";)", pos + 1);
+		}
+		dest.value = ibex::Vector(numbers.size(), 0.0);
+		for (size_t i = 0; i < numbers.size(); ++i) {
+			dest.value[i] = numbers[i];
+		}
+		return true;
+	}
+};
+
+template<>
+struct ValueReader<IntervalVectorHelper> {
+	bool operator()(const std::string& name, const std::string& value, IntervalVectorHelper& dest) {
+		std::vector<ibex::Interval> numbers;
+		if (value[0] != '(' || value[value.size() - 1] != ')') {
+			throw args::ParseError(value + " is not a valid vector for " + name);
+		}
+		size_t pos = value.find(';', 1);
+		size_t last_pos = 1;
+		while (pos != string::npos) {
+			try {
+				if(value[last_pos] == '[') {
+					last_pos += 1;
+					size_t pos_virgule = value.find_first_of(",");
+					double lb = std::stod(value.substr(last_pos, pos_virgule - last_pos));
+					size_t pos_end = value.find_first_of("]");
+					double ub = std::stod(value.substr(pos_virgule+1, pos_end - pos_virgule));
+					numbers.emplace_back(ibex::Interval(lb, ub));
+				} else {
+					numbers.emplace_back(std::stod(value.substr(last_pos, pos - last_pos)));
+				}
+			} catch (std::invalid_argument& e) {
+				throw args::ParseError(value + " is not a valid interval vector for " + name + ": " + e.what());
+			}
+			last_pos = pos + 1;
+			pos = value.find_first_of(";)", pos + 1);
+		}
+		dest.value = ibex::IntervalVector(numbers.size(), 0.0);
+		for (size_t i = 0; i < numbers.size(); ++i) {
+			dest.value[i] = numbers[i];
+		}
+		return true;
+	}
+};
+}
+
 int main(int argc, char** argv) {
 
 	stringstream _random_seed, _eps_x_min, _eps_x_max;
@@ -56,8 +127,17 @@ int main(int argc, char** argv) {
 	args::ValueFlag<double> random_seed(parser, "float", _random_seed.str(), {"random-seed"});
 	args::Flag quiet(parser, "quiet", "Print no report on the standard output.",{'q',"quiet"});
 	args::ValueFlag<string> forced_params(parser, "vars","Force some variables to be parameters in the parametric proofs.",{"forced-params"});
-	args::Positional<std::string> filename(parser, "filename", "The name of the MINIBEX file.");
 
+	args::Group group_path(parser, "This group specify the path for path finding:", args::Group::Validators::AllOrNone);
+	args::ValueFlag<std::string> start_point(group_path, "vector", "Starting point for path finding (constant name)", { "start" });
+	args::ValueFlag<std::string> goal_point(group_path, "vector", "End point for path finding (constant name)", { "goal" });
+	args::Group group(parser, "This group specify the algorithm to use for path finding (default: Dijkstra):",
+			args::Group::Validators::AtMostOne);
+	args::Flag path_finding_dijkstra(group, "dijkstra", "Use Dijkstra's algorithm", { "dijkstra" });
+	args::Flag path_finding_astar_distance(group, "astar_distance", "Use A* with distance heuristic", { "astar-dist" });
+
+	args::Positional<std::string> filename(parser, "filename", "The name of the MINIBEX file.");
+	
 	try
 	{
 		parser.ParseCLI(argc, argv);
@@ -88,6 +168,44 @@ int main(int argc, char** argv) {
 	if (filename.Get()=="") {
 		ibex_error("no input file (try ibexsolve --help)");
 		exit(1);
+	}
+
+	std::vector<std::string> accepted_options = { "--start", "--goal" };
+	MinibexOptionsParser minibexParser(accepted_options);
+	minibexParser.parse(filename.Get());
+	vector<string> unsupported_options = minibexParser.unsupported_options();
+	for (const string& s : unsupported_options) {
+		ibex::ibex_warning("Unsupported option in minibex file: " + s);
+	}
+
+	vector<string> argv_vec = minibexParser.as_argv_list();
+	int new_argc = argc + argv_vec.size();
+	const char* new_argv[new_argc];
+	new_argv[0] = argv[0];
+	int arg_index = 1;
+	for (const string& name : argv_vec) {
+		new_argv[arg_index] = name.c_str();
+		++arg_index;
+	}
+	for(int j = 1; j < argc; ++j) {
+		new_argv[arg_index] = argv[j];
+		++arg_index;
+	}
+
+	// second pass
+	try {
+		parser.ParseCLI(new_argc, new_argv);
+	} catch (args::Help&) {
+		std::cout << parser;
+		return 0;
+	} catch (args::ParseError& e) {
+		std::cerr << e.what() << std::endl;
+		std::cerr << parser;
+		return 1;
+	} catch (args::ValidationError& e) {
+		std::cerr << e.what() << std::endl;
+		std::cerr << parser;
+		return 1;
 	}
 
 	try {
@@ -150,12 +268,48 @@ int main(int argc, char** argv) {
 				cout << "  output format:\tTXT" << endl;
 		}
 
-		// Build the default solver
-		DefaultSolver s(sys,
+		Solver* solver = nullptr;
+
+		ibex::CellBuffer* buffer = nullptr;
+		bool pathFinding = false;
+		if (start_point && goal_point) {
+			if(!quiet) {
+				cout << "  path finding: ON\n";
+			}
+			ibex::IntervalVector start_vector = sys.csts.find(start_point.Get())->second.get().get_vector_value();
+			ibex::IntervalVector goal_vector = sys.csts.find(goal_point.Get())->second.get().get_vector_value();
+			/*double c1[] = {-3,-3,5,5};
+			double c2[] = {3,-3,5,5};
+			ibex::Vector start_vector(4,c1);
+			ibex::Vector goal_vector(4,c2);*/
+			ibex::CellBufferNeighborhood::Heuristic heuristic = ibex::CellBufferNeighborhood::Heuristic::DIJKSTRA;
+			if (path_finding_dijkstra) {
+				heuristic = ibex::CellBufferNeighborhood::Heuristic::DIJKSTRA;
+			} else if (path_finding_astar_distance) {
+				heuristic = ibex::CellBufferNeighborhood::Heuristic::A_STAR_DISTANCE;
+			}
+			buffer = new ibex::CellBufferNeighborhood(start_vector, goal_vector, heuristic);
+			pathFinding = true;
+			solver = new DefaultSolver(sys,
+				eps_x_min ? eps_x_min.Get() : DefaultSolver::default_eps_x_min,
+				eps_x_max ? eps_x_max.Get() : DefaultSolver::default_eps_x_max,
+				buffer,
+				random_seed? random_seed.Get() : DefaultSolver::default_random_seed);
+		} else {
+			solver = new DefaultSolver(sys,
 				eps_x_min ? eps_x_min.Get() : DefaultSolver::default_eps_x_min,
 				eps_x_max ? eps_x_max.Get() : DefaultSolver::default_eps_x_max,
 				!bfs,
 				random_seed? random_seed.Get() : DefaultSolver::default_random_seed);
+		}
+
+		Solver& s = *solver;
+		// Build the default solver
+		/*DefaultSolver s(sys,
+				eps_x_min ? eps_x_min.Get() : DefaultSolver::default_eps_x_min,
+				eps_x_max ? eps_x_max.Get() : DefaultSolver::default_eps_x_max,
+				!bfs,
+				random_seed? random_seed.Get() : DefaultSolver::default_random_seed);*/
 
 		if (boundary_test_arg) {
 
@@ -250,6 +404,19 @@ int main(int argc, char** argv) {
 //			cout << " (note: use --sols to display solutions)" << endl;
 //		}
 
+		if(pathFinding) {
+			CellBufferNeighborhood* path_buffer = static_cast<CellBufferNeighborhood*>(buffer);
+			if(path_buffer->isPathFound) {
+				auto path = path_buffer->pathFound;
+				cout << "Begin path:" << endl;
+				cout << print_mma_path(path) << endl;
+				cout << "End path." << endl;
+			} else {
+				cout << "No path found." << endl;
+			}
+		}
+		delete solver;
+		if(buffer) delete buffer;
 	}
 	catch(ibex::UnknownFileException& e) {
 		cerr << "Error: cannot read file '" << filename.Get() << "'" << endl;

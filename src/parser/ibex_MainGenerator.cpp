@@ -65,6 +65,13 @@ void MainGenerator::generate(const P_Source& source, System& sys) {
 
 	sys.init(fac);
 
+	// Add named constants
+	const Scope& top_scope = scopes().top();
+	for(const char* id : top_scope.cst) {
+		const ExprConstant& d = top_scope.get_cst(id).copy();
+		sys.csts.emplace(make_pair(std::string(id), std::cref(d)));
+	}
+
 	// add the original variables in the garbage
 	// (in case some are not used)
 	for (int i=0;i<vars.size(); i++)

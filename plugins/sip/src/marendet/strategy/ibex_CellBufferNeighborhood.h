@@ -16,6 +16,7 @@
 #include "ibex_CellBuffer.h"
 #include "ibex_IntervalVector.h"
 #include "ibex_Vector.h"
+#include "ibex_CellList.h"
 
 #include <map>
 #include <set>
@@ -27,7 +28,7 @@ class CellBufferNeighborhood: public CellBuffer {
 public:
 	enum Heuristic { DIJKSTRA, A_STAR_DISTANCE };
 
-	CellBufferNeighborhood(Vector start, Vector goal, Heuristic heuristic);
+	CellBufferNeighborhood(IntervalVector start, IntervalVector goal, Heuristic heuristic);
 	virtual ~CellBufferNeighborhood();
 
 	void flush();
@@ -70,17 +71,22 @@ public:
 
 		std::set<Cell*> connectedComponent() const;
 	};
+	double heuristic_distance(const Vector& v1, const Vector& v2) const;
 	double distance(const Vector& v1, const Vector& v2) const;
 	Edge topGraphNode() const;
 	std::vector<Edge> reconstructPath(const std::map<GraphNode*, Edge>& cameFrom, const Edge& current) const;
 	std::vector<Edge> shortestPath(GraphNode* start, GraphNode* goal) const;
 	std::set<GraphNode*> stack_;
-	Vector start_;
+	IntervalVector start_;
 	GraphNode* start_node_ = nullptr;
-	Vector goal_;
+	IntervalVector goal_;
 	GraphNode* goal_node_ = nullptr;
 	Heuristic heuristic_;
 	mutable Edge last_top_{nullptr, 0.0};
+	
+	mutable CellList cell_list_start;
+	mutable CellList cell_list_goal;
+
 };
 
 } // end namespace ibex

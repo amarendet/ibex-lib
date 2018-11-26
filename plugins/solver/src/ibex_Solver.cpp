@@ -13,6 +13,7 @@
 #include "ibex_NoBisectableVariableException.h"
 #include "ibex_LinearException.h"
 #include "ibex_Manifold.h"
+#include "ibex_CellBufferNeighborhood.h"
 
 #include <cassert>
 
@@ -182,6 +183,9 @@ QualifiedBox* Solver::next() {
 		if (trace==2) cout << buffer << endl;
 
 		Cell* c=buffer.top();
+		if(dynamic_cast<CellBufferNeighborhood*>(&buffer) != nullptr && c == nullptr) {
+			return NULL;
+		}
 
 		ContractContext context(c->prop);
 
@@ -263,7 +267,6 @@ Solver::Status Solver::solve() {
 	try {
 
 		while (next()!=NULL) { }
-
 		if (manif->unknown.size()>0)
 			manif->status = NOT_ALL_VALIDATED;
 		else if (manif->inner.size()>0 || manif->boundary.size()>0)
@@ -459,6 +462,12 @@ QualifiedBox& Solver::store_sol(const QualifiedBox& sol) {
 	switch (sol.status) {
 	case QualifiedBox::INNER    :
 		manif->inner.push_back(sol);
+		{
+			CellBufferNeighborhood* cbn = dynamic_cast<CellBufferNeighborhood*>(&buffer);
+			if(cbn != nullptr) {
+				cbn->pushInner(new Cell(sol.existence()));
+			}
+		}
 		return manif->inner.back();
 	case QualifiedBox::BOUNDARY :
 		manif->boundary.push_back(sol);
