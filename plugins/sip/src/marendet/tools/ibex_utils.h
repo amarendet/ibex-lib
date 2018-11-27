@@ -37,6 +37,9 @@ std::string print_mma(const Vector& iv);
 std::string print_mma(const IntervalVector& iv);
 std::string print_mma(const std::vector<IntervalVector>& path);
 std::string print_mma_path(const std::vector<IntervalVector>& path);
+
+int symbol_array_dim(const Array<const ExprSymbol>& array);
+
 } // end namespace ibex
 
 #endif // __SIP_IBEX_UTILS_H__
