@@ -71,8 +71,8 @@ public:
 
 		std::set<Cell*> connectedComponent() const;
 	};
-	double heuristic_distance(const Vector& v1, const Vector& v2) const;
-	double distance(const Vector& v1, const Vector& v2) const;
+	double heuristic_distance(const GraphNode& v1, const GraphNode& v2) const;
+	double distance(const GraphNode& n1, const GraphNode& n2) const;
 	Edge topGraphNode() const;
 	std::vector<Edge> reconstructPath(const std::map<GraphNode*, Edge>& cameFrom, const Edge& current) const;
 	std::vector<Edge> shortestPath(GraphNode* start, GraphNode* goal) const;
@@ -82,6 +82,7 @@ public:
 	IntervalVector goal_;
 	GraphNode* goal_node_ = nullptr;
 	Heuristic heuristic_;
+	mutable bool init_push_phase_ = true;
 	mutable Edge last_top_{nullptr, 0.0};
 	
 	mutable CellList cell_list_start;

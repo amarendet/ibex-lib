@@ -58,8 +58,8 @@ bool CellBufferNeighborhood::empty() const
 
 void CellBufferNeighborhood::push(Cell* cell)
 {
-    //std::cout << cell->box << std::endl;
-    if(!stack_.empty()) {
+    std::cout << "push: " << cell->box << std::endl;
+    if(!init_push_phase_ && !stack_.empty()) {
         if(start_node_ == nullptr) {
             if(start_.intersects(cell->box)) {
                 cell_list_start.push(cell);
@@ -76,7 +76,7 @@ void CellBufferNeighborhood::push(Cell* cell)
     GraphNode* newNode = new GraphNode(cell, GraphNode::UNKNOWN);
     for (GraphNode* node : stack_) {
         if (node->cell->box.intersects(cell->box)) {
-            double weight = distance(newNode->mid, node->mid);
+            double weight = distance(*newNode, *node);
             //double weight = node->type == GraphNode::UNKNOWN ? 1 : 0;
             newNode->neighborsWeight.insert(Edge(node, weight));
             node->neighborsWeight.insert(Edge(newNode, weight));
@@ -101,8 +101,8 @@ void CellBufferNeighborhood::pushInner(Cell* cell)
         || (start_node_ != nullptr && goal_node_ != nullptr)) {
         for (GraphNode* node : stack_) {
             if (node->cell->box.intersects(cell->box)) {
-                double weight = distance(newNode->mid, node->mid);
-                //double weight = node->type == GraphNode::UNKNOWN ? 1 : 0;
+                double weight = distance(*newNode, *node);
+                //double weight = node->type == GraphNode::UNKNOWN ? 0 : 0;
                 newNode->neighborsWeight.insert(Edge(node, weight));
                 node->neighborsWeight.insert(Edge(newNode, weight));
             }
@@ -149,6 +149,7 @@ Cell* CellBufferNeighborhood::pop()
 
 Cell* CellBufferNeighborhood::top() const
 {
+    init_push_phase_ = false;
     if(start_node_ == nullptr) {
         return cell_list_start.pop();
     } else if(goal_node_ == nullptr) {
@@ -159,6 +160,7 @@ Cell* CellBufferNeighborhood::top() const
     if (top.node == nullptr) {
         return nullptr;
     } else {
+        std::cout << "top: " << top.node->cell->box << std::endl;
         return top.node->cell;
     }
     //return stack_.back()->cell;
@@ -174,17 +176,20 @@ CellBufferNeighborhood::Edge CellBufferNeighborhood::topGraphNode() const
     }*/
     
     std::vector<Edge> path = shortestPath(start_node_, goal_node_);
+    pathFound.clear();
     for (const Edge& n : path) {
         if (n.node->type == GraphNode::UNKNOWN) {
             isPathFound = false;
             return n;
+        } else {
+            pathFound.emplace_back(n.node->cell->box);
         }
     }
     // PATH FOUND
-    pathFound.clear();
+    /*pathFound.clear();
     for (const Edge& n : path) {
         pathFound.emplace_back(n.node->cell->box);
-    }
+    }*/
     isPathFound = true;
     return Edge{ nullptr, 0.0 };
     //return stack_.back()->cell;
@@ -208,19 +213,27 @@ std::set<Cell*> CellBufferNeighborhood::GraphNode::connectedComponent() const
     return component;
 }
 
-double CellBufferNeighborhood::heuristic_distance(const Vector& v1, const Vector& v2) const
+double CellBufferNeighborhood::heuristic_distance(const GraphNode& v1, const GraphNode& v2) const
 {
     if (heuristic_ == DIJKSTRA)
         return 0;
-    else if (heuristic_ == A_STAR_DISTANCE)
-        return norm(v1 - v2);
-    else
+    else if (heuristic_ == A_STAR_DISTANCE) {
+        /*IntervalVector vv1 = v1.cell->box.subvector(0,1);
+        IntervalVector vv2 = v2.cell->box.subvector(0,1);
+        return 5*hadamard_product((vv1-vv2),(vv1-vv2)).mig().min();*/
+        return norm(v1.mid.subvector(0,1) - v2.mid.subvector(0,1));
+    } else
         return 0;
 }
 
-double CellBufferNeighborhood::distance(const Vector& v1, const Vector& v2) const
+double CellBufferNeighborhood::distance(const GraphNode& v1, const GraphNode& v2) const
 {
-    return norm(v1.subvector(0,1)-v2.subvector(0,1));
+    double w = norm(v1.mid.subvector(0,1)-v2.mid.subvector(0,1));
+    if(v1.type == GraphNode::UNKNOWN || v2.type == GraphNode::UNKNOWN) {
+        return 2*w;
+    } else {
+        return 1*w;
+    }
 }
 
 std::vector<CellBufferNeighborhood::Edge> CellBufferNeighborhood::reconstructPath(
@@ -230,7 +243,7 @@ std::vector<CellBufferNeighborhood::Edge> CellBufferNeighborhood::reconstructPat
     path.emplace_back(current);
     auto it = cameFrom.find(current.node);
     while (it != cameFrom.end()) {
-        path.emplace_back(it->second);
+        path.emplace(path.end(), it->second);
         it = cameFrom.find(it->second.node);
     }
     return path;
@@ -239,6 +252,7 @@ std::vector<CellBufferNeighborhood::Edge> CellBufferNeighborhood::reconstructPat
 std::vector<CellBufferNeighborhood::Edge> CellBufferNeighborhood::shortestPath(GraphNode* start,
     GraphNode* goal) const
 {
+    const double infinity = 100000;
     std::set<GraphNode*> closedSet;
     std::set<Edge> openSet;
     Edge start_edge(start, 0.0);
@@ -247,19 +261,27 @@ std::vector<CellBufferNeighborhood::Edge> CellBufferNeighborhood::shortestPath(G
     std::map<Edge, double> gScore;
     gScore.emplace(std::make_pair(start_edge, 0.0));
     std::map<Edge, double> fScore;
-    fScore.emplace(std::make_pair(start_edge, heuristic_distance(start->mid, goal->mid)));
+    fScore.emplace(std::make_pair(start_edge, heuristic_distance(*start, *goal)));
 
-    auto defaultMapGet = [](const std::map<Edge, double>& map, const Edge& value) {
+    auto defaultMapGet = [&](const std::map<Edge, double>& map, const Edge& value) {
         const auto it = map.find(value);
         if (it == map.end()) {
-            return std::numeric_limits<double>::max();
+            return infinity;
         } else {
             return it->second;
         }
     };
 
     while (!openSet.empty()) {
+        double min_f_score = infinity;
         Edge current = *openSet.begin();
+        for(Edge e : openSet) {
+            double fScore_tmp = defaultMapGet(fScore, e);
+            if(fScore_tmp < min_f_score) {
+                current = e;
+                min_f_score = fScore_tmp;
+            }
+        }
         double fScore_value = defaultMapGet(fScore, current);
         for (const Edge& n : openSet) {
             double tmp = defaultMapGet(fScore, n);
@@ -288,7 +310,8 @@ std::vector<CellBufferNeighborhood::Edge> CellBufferNeighborhood::shortestPath(G
             }
             cameFrom[neighbor.node] = current;
             gScore[neighbor] = tentative_gScore;
-            fScore[neighbor] = tentative_gScore + heuristic_distance(neighbor.node->mid, goal->mid);
+            fScore[neighbor] = tentative_gScore + heuristic_distance(*neighbor.node, *goal);
+
         }
     }
     return std::vector<Edge>();

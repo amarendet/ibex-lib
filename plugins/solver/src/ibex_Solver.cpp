@@ -483,6 +483,10 @@ QualifiedBox& Solver::store_sol(const QualifiedBox& sol) {
 }
 
 void Solver::flush() {
+	CellBufferNeighborhood* cbn = dynamic_cast<CellBufferNeighborhood*>(&buffer);
+	if(cbn != nullptr) {
+		cbn->flush();
+	}
 	while (!buffer.empty()) {
 		Cell* cell=buffer.top();
 		QualifiedBox sol(cell->box,QualifiedBox::PENDING);

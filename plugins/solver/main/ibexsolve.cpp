@@ -378,6 +378,7 @@ int main(int argc, char** argv) {
 		if (!quiet)
 			cout << "running............" << endl << endl;
 
+		s.cell_limit=100;
 		// Get the solutions
 		if (input_file)
 			s.solve(input_file.Get().c_str());
@@ -412,7 +413,11 @@ int main(int argc, char** argv) {
 				cout << print_mma_path(path) << endl;
 				cout << "End path." << endl;
 			} else {
-				cout << "No path found." << endl;
+				cout << "No path found. Partial path:" << endl;
+				auto path = path_buffer->pathFound;
+				cout << "Begin path:" << endl;
+				cout << print_mma_path(path) << endl;
+				cout << "End path." << endl;
 			}
 		}
 		delete solver;
