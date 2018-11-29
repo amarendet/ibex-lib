@@ -58,7 +58,7 @@ bool CellBufferNeighborhood::empty() const
 
 void CellBufferNeighborhood::push(Cell* cell)
 {
-    std::cout << "push: " << cell->box << std::endl;
+    //std::cout << "push: " << cell->box << std::endl;
     if(!init_push_phase_ && !stack_.empty()) {
         if(start_node_ == nullptr) {
             if(start_.intersects(cell->box)) {
@@ -160,7 +160,7 @@ Cell* CellBufferNeighborhood::top() const
     if (top.node == nullptr) {
         return nullptr;
     } else {
-        std::cout << "top: " << top.node->cell->box << std::endl;
+        //std::cout << "top: " << top.node->cell->box << std::endl;
         return top.node->cell;
     }
     //return stack_.back()->cell;

@@ -15,6 +15,8 @@
 #include "args.hxx"
 
 #include <sstream>
+#include <algorithm>
+#include <iterator>
 
 #ifndef _IBEX_WITH_SOLVER_
 #error "You need to install the IbexSolve plugin (--with-solver)."
@@ -109,6 +111,7 @@ int main(int argc, char** argv) {
 	args::ValueFlag<double> eps_x_min(parser, "float", _eps_x_min.str(), {'e', "eps-min"});
 	args::ValueFlag<double> eps_x_max(parser, "float", _eps_x_max.str(), {'E', "eps-max"});
 	args::ValueFlag<double> timeout(parser, "float", "Timeout (time in seconds). Default value is +oo (none).", {'t', "timeout"});
+	args::ValueFlag<int> cell_limit(parser, "int", "Number of cells. Default value is +oo (none).", {'c', "cell-limit"});
 	args::ValueFlag<string> input_file(parser, "filename", "Manifold input file. The file contains a "
 			"(intermediate) description of the manifold with boxes in the MNF (binary) format.", {'i',"input"});
 	args::ValueFlag<string> output_file(parser, "filename", "Manifold output file. The file will contain the "
@@ -128,6 +131,9 @@ int main(int argc, char** argv) {
 	args::Flag quiet(parser, "quiet", "Print no report on the standard output.",{'q',"quiet"});
 	args::ValueFlag<string> forced_params(parser, "vars","Force some variables to be parameters in the parametric proofs.",{"forced-params"});
 
+
+	args::ValueFlag<string> path_output_file(parser, "filename", "Path manifold output file. The file will contain the "
+			"description of the boxes of the path (as inner boxes) in the MNF (binary) format.", {'p',"path-output"});
 	args::Group group_path(parser, "This group specify the path for path finding:", args::Group::Validators::AllOrNone);
 	args::ValueFlag<std::string> start_point(group_path, "vector", "Starting point for path finding (constant name)", { "start" });
 	args::ValueFlag<std::string> goal_point(group_path, "vector", "End point for path finding (constant name)", { "goal" });
@@ -214,8 +220,10 @@ int main(int argc, char** argv) {
 		System sys(filename.Get().c_str());
 
 		string output_manifold_file; // manifold output file
+		string path_output_manifold_file;
 		bool overwitten=false;       // is it overwritten?
 		string manifold_copy;
+		string path_manifold_copy;
 
 		if (!quiet) {
 			cout << endl << "***************************** setup *****************************" << endl;
@@ -230,6 +238,36 @@ int main(int argc, char** argv) {
 
 			if (bfs)
 				cout << "  bfs:\t\t\tON" << endl;
+		}
+
+		if (path_output_file) {
+			path_output_manifold_file = path_output_file.Get();
+		} else {
+			// got from stackoverflow.com:
+			string::size_type const p(filename.Get().find_last_of('.'));
+			// filename without extension
+			string filename_no_ext=filename.Get().substr(0, p);
+			stringstream ss;
+			ss << filename_no_ext << "-path.mnf";
+			path_output_manifold_file=ss.str();
+
+			ifstream file;
+			file.open(path_output_manifold_file.c_str(), ios::in); // to check if it exists
+
+			if (file.is_open()) {
+				overwitten = true;
+				stringstream ss;
+				ss << path_output_manifold_file << "~";
+				path_manifold_copy=ss.str();
+				// got from stackoverflow.com:
+				ofstream dest(path_manifold_copy, ios::binary);
+
+			    istreambuf_iterator<char> begin_source(file);
+			    istreambuf_iterator<char> end_source;
+			    ostreambuf_iterator<char> begin_dest(dest);
+			    copy(begin_source, end_source, begin_dest);
+			}
+			file.close();
 		}
 
 		if (output_file) {
@@ -274,7 +312,7 @@ int main(int argc, char** argv) {
 		bool pathFinding = false;
 		if (start_point && goal_point) {
 			if(!quiet) {
-				cout << "  path finding: ON\n";
+				cout << "  path finding:\t\tON\n";
 			}
 			ibex::IntervalVector start_vector = sys.csts.find(start_point.Get())->second.get().get_vector_value();
 			ibex::IntervalVector goal_vector = sys.csts.find(goal_point.Get())->second.get().get_vector_value();
@@ -364,6 +402,12 @@ int main(int argc, char** argv) {
 			s.time_limit=timeout.Get();
 		}
 
+		if(cell_limit) {
+			if(!quiet)
+				cout << "  cell limit:\t\t" << cell_limit.Get() << endl;
+			s.cell_limit = cell_limit.Get();
+		}
+
 		// This option prints each better feasible point when it is found
 		if (trace) {
 			if (!quiet)
@@ -378,7 +422,6 @@ int main(int argc, char** argv) {
 		if (!quiet)
 			cout << "running............" << endl << endl;
 
-		s.cell_limit=100;
 		// Get the solutions
 		if (input_file)
 			s.solve(input_file.Get().c_str());
@@ -407,17 +450,28 @@ int main(int argc, char** argv) {
 
 		if(pathFinding) {
 			CellBufferNeighborhood* path_buffer = static_cast<CellBufferNeighborhood*>(buffer);
-			if(path_buffer->isPathFound) {
-				auto path = path_buffer->pathFound;
-				cout << "Begin path:" << endl;
-				cout << print_mma_path(path) << endl;
-				cout << "End path." << endl;
+			Manifold mnf = Manifold(s.get_manifold());
+			std::string* var_names = s.get_manifold().var_names;
+			mnf.var_names = new std::string[mnf.n];
+			for(int i = 0; i < mnf.n; ++i)
+				mnf.var_names[i] = var_names[i];
+			mnf.inner.clear();
+			mnf.boundary.clear();
+			mnf.unknown.clear();
+			mnf.pending.clear();
+			auto path = path_buffer->pathFound;
+			for(int i = 0; i < path.size(); ++i) {
+				mnf.inner.emplace_back(QualifiedBox(path[i], QualifiedBox::INNER));
+			}
+			if(txt) {
+				mnf.write_txt(path_output_manifold_file.c_str());
 			} else {
-				cout << "No path found. Partial path:" << endl;
-				auto path = path_buffer->pathFound;
-				cout << "Begin path:" << endl;
-				cout << print_mma_path(path) << endl;
-				cout << "End path." << endl;
+				mnf.write(path_output_manifold_file.c_str());
+			}
+			if (!quiet) {
+				cout << " path written in " << path_output_manifold_file << "\n";
+				if (overwitten)
+					cout << " (old path file saved in " << path_manifold_copy << ")\n";
 			}
 		}
 		delete solver;
