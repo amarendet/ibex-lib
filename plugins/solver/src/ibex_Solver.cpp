@@ -465,7 +465,7 @@ QualifiedBox& Solver::store_sol(const QualifiedBox& sol) {
 		{
 			CellBufferNeighborhood* cbn = dynamic_cast<CellBufferNeighborhood*>(&buffer);
 			if(cbn != nullptr) {
-				cbn->pushInner(new Cell(sol.existence()));
+				cbn->push_inner(new Cell(sol.existence()));
 			}
 		}
 		return manif->inner.back();
@@ -486,6 +486,7 @@ void Solver::flush() {
 	CellBufferNeighborhood* cbn = dynamic_cast<CellBufferNeighborhood*>(&buffer);
 	if(cbn != nullptr) {
 		cbn->flush();
+		return;
 	}
 	while (!buffer.empty()) {
 		Cell* cell=buffer.top();

@@ -27,6 +27,50 @@ Manifold::Manifold(int n, int m, int nb_ineq) : n(n), m(m), var_names(new string
 
 }
 
+Manifold::Manifold(const char* filename) {
+	ifstream f;
+
+	f.open(filename, ios::in | ios::binary);
+
+	if (f.fail()) ibex_error("[manifold]: cannot open input file.\n");
+
+	int input_format_version = read_signature(f);
+
+	n = read_int(f);
+	var_names = new string[n];
+
+	m = read_int(f);
+
+	nb_ineq = read_int(f);
+
+	if (input_format_version>=3) {
+		read_vars(f);
+	}
+
+	read_int(f); // status
+
+	int nb_inner = read_int(f);
+	int nb_boundary = read_int(f);
+	int nb_unknown = read_int(f);
+	int nb_pending = read_int(f);
+	int nb_sols = nb_inner + nb_boundary + nb_unknown + nb_pending;
+
+	time = read_double(f);
+	nb_cells = read_int(f);
+
+	IntervalVector box(n);
+	for (int i=0; i<nb_sols; i++) {
+		QualifiedBox sol = read_output_box(f);
+
+		switch(sol.status) {
+		case 0: inner.push_back(sol); break;
+		case 1: boundary.push_back(sol); break;
+		case 2: unknown.push_back(sol); break;
+		case 3: pending.push_back(sol); break;
+		}
+	}	
+}
+
 Manifold::~Manifold() {
 	delete[] var_names;
 }

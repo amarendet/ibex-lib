@@ -10,311 +10,240 @@
  * ---------------------------------------------------------------------------- */
  
 #include "ibex_CellBufferNeighborhood.h"
+#include "ibex_utils.h"
 
 #include <limits>
 #include <stack>
 #include <utility>
 
+using namespace std;
+
 namespace ibex {
 
-CellBufferNeighborhood::CellBufferNeighborhood(IntervalVector start, IntervalVector goal, CellBufferNeighborhood::Heuristic heuristic)
-    : start_(start)
-    , goal_(goal)
+CellBufferNeighborhood::CellBufferNeighborhood(CellBufferNeighborhood::Heuristic heuristic)
+    : start_(IntervalVector::empty(1))
+    , goal_(IntervalVector::empty(1))
     , heuristic_(heuristic)
 {
-    cell_list_start.push(new Cell(start_));
-    cell_list_goal.push(new Cell(goal_));
+    flush();
 }
 
-CellBufferNeighborhood::~CellBufferNeighborhood()
-{
-    for (GraphNode* node : stack_) {
-        delete node;
+CellBufferNeighborhood::~CellBufferNeighborhood() {
+    flush();
+}
+
+void CellBufferNeighborhood::init(const IntervalVector& start, const IntervalVector& goal) {
+    start_ = start;
+    goal_ = goal;
+    start_node_ = new Node{new Cell(start_), true};
+    goal_node_ = new Node{new Cell(goal_), true};
+    insert_into_graph(start_node_);
+    insert_into_graph(goal_node_);
+}
+
+void CellBufferNeighborhood::flush() {
+    for(auto pair : graph_list_) {
+        const Node* n = pair.first;
+        delete n->cell;
+        delete n;
+    }
+    update_top_ = true;
+    graph_list_.clear();
+    size_ = 0;
+    init(start_, goal_);
+}
+
+unsigned int CellBufferNeighborhood::size() const {
+    if(empty()) {
+        return 0;
+    } else {
+        return size_;
     }
 }
 
-void CellBufferNeighborhood::flush()
-{
-    for (GraphNode* node : stack_) {
-        delete node->cell;
-        delete node;
-    }
-    cell_list_start.flush();
-    cell_list_goal.flush();
-    cell_list_start.push(new Cell(start_));
-    cell_list_goal.push(new Cell(goal_));
-    stack_.clear();
+bool CellBufferNeighborhood::empty() const {
+    update_top();
+    return top_ == nullptr;
 }
 
-unsigned int CellBufferNeighborhood::size() const
-{
-    return stack_.size();
+void CellBufferNeighborhood::push(Cell* cell) {
+    const Node* new_node = new Node{cell, false};   
+    insert_into_graph(new_node);
+    size_ += 1;
 }
 
-bool CellBufferNeighborhood::empty() const
-{
-    return stack_.empty();
-}
-
-void CellBufferNeighborhood::push(Cell* cell)
-{
-    //std::cout << "push: " << cell->box << std::endl;
-    if(!init_push_phase_ && !stack_.empty()) {
-        if(start_node_ == nullptr) {
-            if(start_.intersects(cell->box)) {
-                cell_list_start.push(cell);
-            }
-            return;
-        }
-        if(goal_node_ == nullptr) {
-            if(goal_.intersects(cell->box)) {
-                cell_list_goal.push(cell);
-            }
-            return;
-        }
-    }
-    GraphNode* newNode = new GraphNode(cell, GraphNode::UNKNOWN);
-    for (GraphNode* node : stack_) {
-        if (node->cell->box.intersects(cell->box)) {
-            double weight = distance(*newNode, *node);
-            //double weight = node->type == GraphNode::UNKNOWN ? 1 : 0;
-            newNode->neighborsWeight.insert(Edge(node, weight));
-            node->neighborsWeight.insert(Edge(newNode, weight));
-        }
-    }
-    stack_.emplace(newNode);
-    /*if (cell->box.contains(start_)) {
-        start_node_ = newNode;
-    }
-    if (cell->box.contains(goal_)) {
-        goal_node_ = newNode;
-    }*/
-}
-
-void CellBufferNeighborhood::pushInner(Cell* cell)
-{
-    //std::cout << "inner:" << cell->box << std::endl;
-
-    GraphNode* newNode = new GraphNode(cell, GraphNode::INNER);
-    if((start_node_ == nullptr && start_.intersects(cell->box))
-        || (goal_node_ == nullptr && goal_.intersects(cell->box))
-        || (start_node_ != nullptr && goal_node_ != nullptr)) {
-        for (GraphNode* node : stack_) {
-            if (node->cell->box.intersects(cell->box)) {
-                double weight = distance(*newNode, *node);
-                //double weight = node->type == GraphNode::UNKNOWN ? 0 : 0;
-                newNode->neighborsWeight.insert(Edge(node, weight));
-                node->neighborsWeight.insert(Edge(newNode, weight));
-            }
-        }
-    }
-
-    if (start_node_ == nullptr) {
-        if(start_.intersects(cell->box)) {
-            start_node_ = newNode;
-            std::cout << "starting box: " << cell->box << std::endl;
-            stack_.emplace(newNode);
-        }
-        return;
-    }
-    if (goal_node_ == nullptr) {
-        if(goal_.intersects(cell->box)) {
-            goal_node_ = newNode;
-            std::cout << "goal box: " << cell->box << std::endl;
-            stack_.emplace(newNode);
-        }
-        return;
-    }
-    
-    stack_.emplace(newNode);
-    
-}
-
-Cell* CellBufferNeighborhood::pop()
-{
-    //GraphNode* top = stack_.back();
-    //stack_.pop_back();
-    //GraphNode* top = topGraphNode();
-    Edge top = last_top_;
-    if (top.node == nullptr)
-        return nullptr;
-    for (auto neighbor : top.node->neighborsWeight) {
-        neighbor.node->neighborsWeight.erase(top);
-    }
-    stack_.erase(top.node);
-    Cell* cell = top.node->cell;
-    delete top.node;
-    return cell;
-}
-
-Cell* CellBufferNeighborhood::top() const
-{
-    init_push_phase_ = false;
-    if(start_node_ == nullptr) {
-        return cell_list_start.pop();
-    } else if(goal_node_ == nullptr) {
-        return cell_list_goal.pop();
-    }
-    Edge top = topGraphNode();
-    last_top_ = top;
-    if (top.node == nullptr) {
+Cell* CellBufferNeighborhood::pop() {
+    update_top();
+    if(top_ == nullptr) {
         return nullptr;
     } else {
-        //std::cout << "top: " << top.node->cell->box << std::endl;
-        return top.node->cell;
+        Cell* cell = top_->cell;
+        delete_from_graph(top_);
+        size_ -= 1;
+        return cell;
     }
-    //return stack_.back()->cell;
+}
+Cell* CellBufferNeighborhood::top() const {
+    update_top();
+    //cout << top_->cell->box.mid() << endl;
+    return top_->cell;
 }
 
-CellBufferNeighborhood::Edge CellBufferNeighborhood::topGraphNode() const
-{
-    // We must first prove that the starting and goal points are feasible
-    /*if (start_node_->type == GraphNode::UNKNOWN) {
-        return Edge(start_node_, 0.0);
-    } else if (goal_node_->type == GraphNode::UNKNOWN) {
-        return Edge(goal_node_, 0.0);
-    }*/
-    
-    std::vector<Edge> path = shortestPath(start_node_, goal_node_);
-    pathFound.clear();
-    for (const Edge& n : path) {
-        if (n.node->type == GraphNode::UNKNOWN) {
-            isPathFound = false;
+void CellBufferNeighborhood::push_inner(Cell* cell) {
+    // Idea : don't push cell already fully contained in other inner cells
+    const Node* new_node = new Node{cell, true};   
+    insert_into_graph(new_node);
+}
+
+bool CellBufferNeighborhood::feasible_path_found() {
+    return feasible_path_found_;
+}
+
+vector<IntervalVector> CellBufferNeighborhood::path() const {
+    return shortest_path_iv_;
+}
+
+void CellBufferNeighborhood::insert_into_graph(const Node* node) {
+    update_top_ = true;
+    map_edge_by_node neighbors;
+    for(auto& pair : graph_list_) {
+        const Node* other = pair.first;
+        map_edge_by_node& other_neighbors = pair.second;
+        if(node->cell->box.intersects(other->cell->box)) {
+            double w = weight(node, other);
+            neighbors.emplace(other, Edge{node, other, w});
+            other_neighbors.emplace(node, Edge{other, node, w});
+        }
+    }
+    graph_list_.emplace(node, neighbors);
+}
+
+void CellBufferNeighborhood::delete_from_graph(const Node* node) {
+    update_top_ = true;
+    map_edge_by_node& neighbors = graph_list_[node];
+    for(auto& pair : neighbors) {
+        const Edge& e = pair.second;
+        map_edge_by_node& other_neighbors = graph_list_[e.to];
+        other_neighbors.erase(node);
+    }
+    graph_list_.erase(node);
+}
+
+double CellBufferNeighborhood::weight(const Node* from, const Node* to) const {
+    double w = norm(from->cell->box.mid() - to->cell->box.mid());
+    //  Vector v1 = from->cell->box.mid().subvector(0,1);
+    //  Vector v2 = to->cell->box.mid().subvector(0,1);
+    //  double w = (v1-v2)*(v1-v2);
+    // cout << w << endl;
+    if(from->inner || to->inner) {
+        return w;
+    } else {
+        return 100*w;
+    }
+}
+
+void CellBufferNeighborhood::update_top() const {
+    if(!update_top_) {
+        return;
+    }
+    if(alternate_)
+        update_path_a_star(goal_node_, start_node_);
+    else
+        update_path_a_star(start_node_, goal_node_);
+    alternate_ = !alternate_;
+    top_ = first_unknown_node_on_path();
+    update_top_ = false;
+}
+
+const CellBufferNeighborhood::Node* CellBufferNeighborhood::first_unknown_node_on_path() const {
+    shortest_path_iv_.clear();
+    for(const Node* n : shortest_path_) {
+        if(!n->inner) {
             return n;
-        } else {
-            pathFound.emplace_back(n.node->cell->box);
         }
+        shortest_path_iv_.emplace(shortest_path_iv_.begin(), n->cell->box);
     }
-    // PATH FOUND
-    /*pathFound.clear();
-    for (const Edge& n : path) {
-        pathFound.emplace_back(n.node->cell->box);
-    }*/
-    isPathFound = true;
-    return Edge{ nullptr, 0.0 };
-    //return stack_.back()->cell;
+    feasible_path_found_ = !impossible_;
+    return nullptr;
 }
 
-std::set<Cell*> CellBufferNeighborhood::GraphNode::connectedComponent() const
-{
-    std::set<Cell*> component;
-    std::stack<Edge> toExplore;
-    while (!toExplore.empty()) {
-        Edge edge = toExplore.top();
-        toExplore.pop();
-        for (Edge neighbor : edge.node->neighborsWeight) {
-            if (component.find(neighbor.node->cell) == component.end()) {
-                // not yet in component
-                toExplore.push(neighbor);
-            }
-        }
-        component.insert(edge.node->cell);
-    }
-    return component;
-}
+void CellBufferNeighborhood::update_path_a_star(const Node* start_node, const Node* goal_node) const {
 
-double CellBufferNeighborhood::heuristic_distance(const GraphNode& v1, const GraphNode& v2) const
-{
-    if (heuristic_ == DIJKSTRA)
-        return 0;
-    else if (heuristic_ == A_STAR_DISTANCE) {
-        /*IntervalVector vv1 = v1.cell->box.subvector(0,1);
-        IntervalVector vv2 = v2.cell->box.subvector(0,1);
-        return 5*hadamard_product((vv1-vv2),(vv1-vv2)).mig().min();*/
-        return norm(v1.mid.subvector(0,1) - v2.mid.subvector(0,1));
-    } else
-        return 0;
-}
-
-double CellBufferNeighborhood::distance(const GraphNode& v1, const GraphNode& v2) const
-{
-    double w = norm(v1.mid.subvector(0,1)-v2.mid.subvector(0,1));
-    if(v1.type == GraphNode::UNKNOWN || v2.type == GraphNode::UNKNOWN) {
-        return 2*w;
-    } else {
-        return 1*w;
-    }
-}
-
-std::vector<CellBufferNeighborhood::Edge> CellBufferNeighborhood::reconstructPath(
-    const std::map<GraphNode*, Edge>& cameFrom, const Edge& current) const
-{
-    std::vector<Edge> path;
-    path.emplace_back(current);
-    auto it = cameFrom.find(current.node);
-    while (it != cameFrom.end()) {
-        path.emplace(path.end(), it->second);
-        it = cameFrom.find(it->second.node);
-    }
-    return path;
-}
-
-std::vector<CellBufferNeighborhood::Edge> CellBufferNeighborhood::shortestPath(GraphNode* start,
-    GraphNode* goal) const
-{
-    const double infinity = 100000;
-    std::set<GraphNode*> closedSet;
-    std::set<Edge> openSet;
-    Edge start_edge(start, 0.0);
-    openSet.emplace(start_edge);
-    std::map<GraphNode*, Edge> cameFrom;
-    std::map<Edge, double> gScore;
-    gScore.emplace(std::make_pair(start_edge, 0.0));
-    std::map<Edge, double> fScore;
-    fScore.emplace(std::make_pair(start_edge, heuristic_distance(*start, *goal)));
-
-    auto defaultMapGet = [&](const std::map<Edge, double>& map, const Edge& value) {
-        const auto it = map.find(value);
-        if (it == map.end()) {
-            return infinity;
+    map<const Node*, double> priority; // the lowest is first;
+    map<const Node*, double> costs;
+    map<const Node*, const Node*> came_from;
+    auto cmp = [&](const Node* n1, const Node* n2) {
+        return priority[n1] < priority[n2];
+    };
+    auto heuristic = [&](const Node* n) {
+        if(heuristic_ == Heuristic::A_STAR_DISTANCE) {
+            return norm(n->cell->box.mid() - goal_node->cell->box.mid());
         } else {
-            return it->second;
+            return 0.0;
         }
     };
+    const double infinity = std::numeric_limits<double>::max();
 
-    while (!openSet.empty()) {
-        double min_f_score = infinity;
-        Edge current = *openSet.begin();
-        for(Edge e : openSet) {
-            double fScore_tmp = defaultMapGet(fScore, e);
-            if(fScore_tmp < min_f_score) {
-                current = e;
-                min_f_score = fScore_tmp;
-            }
-        }
-        double fScore_value = defaultMapGet(fScore, current);
-        for (const Edge& n : openSet) {
-            double tmp = defaultMapGet(fScore, n);
-            if (tmp < fScore_value) {
-                fScore_value = tmp;
-                current = n;
-            }
-        }
-        /*GraphNode* current = *std::min(openSet.begin(), openSet.end(), [&,fScore](GraphNode* n1, GraphNode* n2) {
-		 return defaultMapGet(fScore, n1) < defaultMapGet(fScore, n2);
-		 });*/
-        if (current.node == goal) {
-            return reconstructPath(cameFrom, current);
-        }
-        openSet.erase(current);
-        closedSet.emplace(current.node);
-        for (const Edge& neighbor : current.node->neighborsWeight) {
-            if (closedSet.find(neighbor.node) != closedSet.end()) {
-                continue;
-            }
-            openSet.emplace(neighbor);
+    set<const Node*, decltype(cmp)> open(cmp);
+    set<const Node*> closed;
 
-            double tentative_gScore = defaultMapGet(gScore, current) + current.weight;
-            if (tentative_gScore >= defaultMapGet(gScore, neighbor)) {
-                continue;
-            }
-            cameFrom[neighbor.node] = current;
-            gScore[neighbor] = tentative_gScore;
-            fScore[neighbor] = tentative_gScore + heuristic_distance(*neighbor.node, *goal);
+    priority[start_node] = 0;
+    costs[start_node] = 0;
+    came_from[start_node] = nullptr;
+    open.insert(start_node);
 
+    while(!open.empty() && *open.begin() != goal_node) {
+        const Node* current = *open.begin();
+        open.erase(*open.begin());
+        closed.insert(current);
+        const map_edge_by_node& neighbors = graph_list_.at(current);
+        for(auto const& pair : neighbors) {
+            const Edge& e = pair.second;
+            double cost = costs[current] + e.weight;
+            bool in_open = set_contains(open, e.to);
+            bool in_closed = set_contains(closed, e.to);
+            // auto it_open = find(open.begin(), open.end(), e.to);
+            // auto it_closed = find(closed.begin(), closed.end(), e.to);
+            bool is_better_path = cost < map_get_with_default(costs, e.to, infinity);
+            if(in_open && is_better_path) {
+                open.erase(e.to);
+                in_open = false;    
+            }
+            if(in_closed && is_better_path) { // Happens only with inadmissible heuristics
+                closed.erase(e.to);
+                in_closed = false;
+            }
+            // if(it_open != open.end() && is_better_path) {
+            //     open.erase(it_open);
+            //     it_open = open.end();
+            // }
+            // if(it_closed != closed.end() && is_better_path) { // Happens only with inadmissible heuristics
+            //     closed.erase(it_closed);
+            //     it_closed = closed.end();
+            // }
+            if(!in_open && !in_closed) {
+                costs[e.to] = cost;
+                priority[e.to] = cost + heuristic(e.to);
+                open.insert(e.to);
+                came_from[e.to] = current;
+            }
         }
     }
-    return std::vector<Edge>();
+    if(*open.begin() != goal_node) {
+        // No path is possible
+        ibex_warning("CellBufferNeighborhood: no potential path found");
+        goal_node = nullptr;
+        impossible_ = true;
+    }
+    reconstruct_path(came_from, goal_node);
+}
+void CellBufferNeighborhood::reconstruct_path(const std::map<const Node*, const Node*>& came_from, const Node* last) const {
+    shortest_path_.clear();
+    const Node* current = last;
+    while(current != nullptr) {
+        shortest_path_.emplace(shortest_path_.begin(), current);
+        current = came_from.at(current);
+    }
 }
 
 } // end namespace ibex

@@ -188,8 +188,8 @@ SIPSolverOutputBox* SIPSolver::next()
         Cell* c = buffer.top();
         if (pathFinding) {
             const auto pathBuffer = static_cast<CellBufferNeighborhood*>(&buffer);
-            if (pathBuffer->isPathFound) {
-                const auto path = pathBuffer->pathFound;
+            if (pathBuffer->feasible_path_found()) {
+                /*const auto path = pathBuffer->pathFound;
 				cout << "Path, in Mathematica format as a sequence of vectors (temp):" << endl << endl;
                 std::cout << "{";
 				for(size_t i = 0; i < path.size()-1; ++i) {
@@ -197,7 +197,7 @@ SIPSolverOutputBox* SIPSolver::next()
                 }
 				std::cout << "{" << path[path.size()-1].mid()[0] << ", " << path[path.size()-1].mid()[1] << "}";
                 std::cout << "}";
-				std::cout << endl << endl;
+				std::cout << endl << endl;*/
                 throw PathFoundException();
             }
         }
@@ -518,7 +518,7 @@ SIPSolverOutputBox& SIPSolver::store_sol(const SIPSolverOutputBox& sol)
     case SIPSolverOutputBox::INNER:
         manif->inner.push_back(sol);
         if (pathFinding) {
-            static_cast<CellBufferNeighborhood*>(&buffer)->pushInner(new Cell(sol.existence()));
+            static_cast<CellBufferNeighborhood*>(&buffer)->push_inner(new Cell(sol.existence()));
         }
         return manif->inner.back();
     case SIPSolverOutputBox::BOUNDARY:

@@ -37,6 +37,7 @@ public:
 	 */
 	Manifold(int n, int m, int nb_ineq);
 
+	Manifold(const char* filename);
 	/**
 	 * \brief Delete this.
 	 */

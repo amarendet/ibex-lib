@@ -22,72 +22,64 @@
 #include <set>
 #include <vector>
 
-namespace ibex {
+namespace ibex { 
 
 class CellBufferNeighborhood: public CellBuffer {
 public:
 	enum Heuristic { DIJKSTRA, A_STAR_DISTANCE };
 
-	CellBufferNeighborhood(IntervalVector start, IntervalVector goal, Heuristic heuristic);
+	CellBufferNeighborhood(Heuristic heuristic);
 	virtual ~CellBufferNeighborhood();
 
+	void init(const IntervalVector& start, const IntervalVector& goal);
 	void flush();
 	unsigned int size() const;
 	bool empty() const;
 	void push(Cell* cell);
 	Cell* pop();
 	Cell* top() const;
-	void pushInner(Cell* cell);
+	void push_inner(Cell* cell);
+	bool feasible_path_found();
+	std::vector<IntervalVector> path() const;
 
-//private:
-
-	mutable std::vector<IntervalVector> pathFound;
-	mutable bool isPathFound = false;
-
-	class GraphNode;
-	class Edge {
-	public:
-		GraphNode* node = nullptr;
-		double weight = 0;
-		Edge() {}
-		Edge(GraphNode* node, double weight) : node(node), weight(weight) {}
-		Edge(const Edge& other) : node(other.node), weight(other.weight) {}
-		bool operator <(const Edge& other) const {
-			return node < other.node;
-		}
-		bool operator==(const Edge& other) const {
-			return node == other.node;
-		}
-	};
-	class GraphNode {
-	public:
-		enum CellType {INNER, UNKNOWN};
+private:
+	struct Node {
 		Cell* cell;
-		Vector mid;
-		std::set<Edge> neighborsWeight;
-		CellType type;
-		GraphNode(Cell* cell, CellType type) : cell(cell), mid(cell->box.mid()), type(type) {
-		}
-
-		std::set<Cell*> connectedComponent() const;
+		bool inner;
 	};
-	double heuristic_distance(const GraphNode& v1, const GraphNode& v2) const;
-	double distance(const GraphNode& n1, const GraphNode& n2) const;
-	Edge topGraphNode() const;
-	std::vector<Edge> reconstructPath(const std::map<GraphNode*, Edge>& cameFrom, const Edge& current) const;
-	std::vector<Edge> shortestPath(GraphNode* start, GraphNode* goal) const;
-	std::set<GraphNode*> stack_;
-	IntervalVector start_;
-	GraphNode* start_node_ = nullptr;
-	IntervalVector goal_;
-	GraphNode* goal_node_ = nullptr;
-	Heuristic heuristic_;
-	mutable bool init_push_phase_ = true;
-	mutable Edge last_top_{nullptr, 0.0};
-	
-	mutable CellList cell_list_start;
-	mutable CellList cell_list_goal;
 
+	struct Edge {
+		const Node* from;
+		const Node* to;
+		double weight;
+	};
+
+	IntervalVector start_;
+	IntervalVector goal_;
+	const Node* start_node_;
+	const Node* goal_node_;
+	Heuristic heuristic_;
+	int size_ = 0;
+
+	mutable bool update_top_ = true;
+	mutable const Node* top_ = nullptr;
+	mutable std::vector<const Node*> shortest_path_;
+	mutable std::vector<IntervalVector> shortest_path_iv_;
+	mutable bool feasible_path_found_ = false;
+	mutable bool impossible_ = false;
+	mutable bool alternate_ = false;
+
+	typedef std::map<const Node*, Edge> map_edge_by_node;
+	std::map<const Node*, map_edge_by_node> graph_list_;
+
+	void update_top() const;
+	void insert_into_graph(const Node* node);
+	void delete_from_graph(const Node* node);
+	double weight(const Node* from, const Node* to) const;
+	void update_path_a_star(const Node* start_node, const Node* goal_node) const;
+	void reconstruct_path(const std::map<const Node*, const Node*>& came_from, const Node* last) const;
+	const Node* first_unknown_node_on_path() const;
+	
 };
 
 } // end namespace ibex

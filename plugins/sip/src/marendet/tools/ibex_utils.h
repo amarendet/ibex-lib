@@ -17,6 +17,8 @@
 #include "ibex_Vector.h"
 
 #include <vector>
+#include <set>
+#include <map>
 
 namespace ibex {
 Interval centeredFormEval(const Function& function, const IntervalVector& arg);
@@ -39,6 +41,32 @@ std::string print_mma(const std::vector<IntervalVector>& path);
 std::string print_mma_path(const std::vector<IntervalVector>& path);
 
 int symbol_array_dim(const Array<const ExprSymbol>& array);
+
+template<class T, class C, class A>
+bool set_contains(const std::set<T, C, A>& s, const T& value) {
+	// return find(s.begin(), s.end(), value) != s.end();
+    return s.find(value) != s.end();
+}
+
+template<class T, class C, class A>
+bool multiset_contains(const std::multiset<T, C, A>& s, const T& value) {
+	return find(s.begin(), s.end(), value) != s.end();
+}
+
+template<class K, class V>
+bool map_contains_key(const std::map<K, V>& m, const K& key) {
+    return m.find(key) != m.end();
+}
+
+template<class K, class V>
+V map_get_with_default(const std::map<K, V>& m, const K& key, V def) {
+    auto it = m.find(key);
+	if(it == m.cend()) {
+		return def;
+	} else {
+		return it->second;
+	}
+}
 
 } // end namespace ibex
 

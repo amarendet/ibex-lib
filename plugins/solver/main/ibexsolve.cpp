@@ -131,7 +131,7 @@ int main(int argc, char** argv) {
 	args::Flag quiet(parser, "quiet", "Print no report on the standard output.",{'q',"quiet"});
 	args::ValueFlag<string> forced_params(parser, "vars","Force some variables to be parameters in the parametric proofs.",{"forced-params"});
 
-
+	args::Flag with_path(parser, "path", "Enable path finding.", {"path"});
 	args::ValueFlag<string> path_output_file(parser, "filename", "Path manifold output file. The file will contain the "
 			"description of the boxes of the path (as inner boxes) in the MNF (binary) format.", {'p',"path-output"});
 	args::Group group_path(parser, "This group specify the path for path finding:", args::Group::Validators::AllOrNone);
@@ -214,6 +214,11 @@ int main(int argc, char** argv) {
 		return 1;
 	}
 
+	// got from stackoverflow.com:
+	string::size_type const p(filename.Get().find_last_of('.'));
+	// filename without extension
+	string filename_no_ext=filename.Get().substr(0, p);
+	
 	try {
 
 		// Load a system of equations
@@ -242,23 +247,15 @@ int main(int argc, char** argv) {
 
 		if (path_output_file) {
 			path_output_manifold_file = path_output_file.Get();
-		} else {
-			// got from stackoverflow.com:
-			string::size_type const p(filename.Get().find_last_of('.'));
-			// filename without extension
-			string filename_no_ext=filename.Get().substr(0, p);
-			stringstream ss;
-			ss << filename_no_ext << "-path.mnf";
-			path_output_manifold_file=ss.str();
+		} else {			
+			path_output_manifold_file=filename_no_ext + "-path.mnf";
 
 			ifstream file;
 			file.open(path_output_manifold_file.c_str(), ios::in); // to check if it exists
 
 			if (file.is_open()) {
 				overwitten = true;
-				stringstream ss;
-				ss << path_output_manifold_file << "~";
-				path_manifold_copy=ss.str();
+				path_manifold_copy= path_output_manifold_file + "~";
 				// got from stackoverflow.com:
 				ofstream dest(path_manifold_copy, ios::binary);
 
@@ -273,13 +270,7 @@ int main(int argc, char** argv) {
 		if (output_file) {
 			output_manifold_file = output_file.Get();
 		} else {
-			// got from stackoverflow.com:
-			string::size_type const p(filename.Get().find_last_of('.'));
-			// filename without extension
-			string filename_no_ext=filename.Get().substr(0, p);
-			stringstream ss;
-			ss << filename_no_ext << ".mnf";
-			output_manifold_file=ss.str();
+			output_manifold_file=filename_no_ext + ".mnf";
 
 			ifstream file;
 			file.open(output_manifold_file.c_str(), ios::in); // to check if it exists
@@ -309,13 +300,11 @@ int main(int argc, char** argv) {
 		Solver* solver = nullptr;
 
 		ibex::CellBuffer* buffer = nullptr;
-		bool pathFinding = false;
-		if (start_point && goal_point) {
+		if (with_path) {
 			if(!quiet) {
 				cout << "  path finding:\t\tON\n";
 			}
-			ibex::IntervalVector start_vector = sys.csts.find(start_point.Get())->second.get().get_vector_value();
-			ibex::IntervalVector goal_vector = sys.csts.find(goal_point.Get())->second.get().get_vector_value();
+			
 			/*double c1[] = {-3,-3,5,5};
 			double c2[] = {3,-3,5,5};
 			ibex::Vector start_vector(4,c1);
@@ -326,13 +315,22 @@ int main(int argc, char** argv) {
 			} else if (path_finding_astar_distance) {
 				heuristic = ibex::CellBufferNeighborhood::Heuristic::A_STAR_DISTANCE;
 			}
-			buffer = new ibex::CellBufferNeighborhood(start_vector, goal_vector, heuristic);
-			pathFinding = true;
+			buffer = new ibex::CellBufferNeighborhood(heuristic);
 			solver = new DefaultSolver(sys,
 				eps_x_min ? eps_x_min.Get() : DefaultSolver::default_eps_x_min,
 				eps_x_max ? eps_x_max.Get() : DefaultSolver::default_eps_x_max,
 				buffer,
 				random_seed? random_seed.Get() : DefaultSolver::default_random_seed);
+			
+			string start_point_file = start_point ? start_point.Get() : filename_no_ext + "-start.mnf";
+			string goal_point_file = goal_point ? goal_point.Get() : filename_no_ext + "-goal.mnf";
+			Manifold start_mnf(start_point_file.c_str());
+			Manifold goal_mnf(goal_point_file.c_str());
+			ibex::IntervalVector start_vector = start_mnf.inner[0].existence();
+			ibex::IntervalVector goal_vector = goal_mnf.inner[0].existence();
+			cout << "  start point:\t\t" << start_vector.mid() << endl;
+			cout << "  goal point:\t\t" << goal_vector.mid() << endl;
+			static_cast<CellBufferNeighborhood*>(buffer)->init(start_vector, goal_vector);
 		} else {
 			solver = new DefaultSolver(sys,
 				eps_x_min ? eps_x_min.Get() : DefaultSolver::default_eps_x_min,
@@ -448,8 +446,15 @@ int main(int argc, char** argv) {
 //			cout << " (note: use --sols to display solutions)" << endl;
 //		}
 
-		if(pathFinding) {
+		if(with_path) {
 			CellBufferNeighborhood* path_buffer = static_cast<CellBufferNeighborhood*>(buffer);
+			if(!quiet) {
+				if(path_buffer->feasible_path_found()) {
+					cout << " \033[32mFeasible path found!\033[0m" << endl;
+				} else {
+					cout << " \033[31mNo feasible path found\033[0m" << endl;
+				}
+			}
 			Manifold mnf = Manifold(s.get_manifold());
 			std::string* var_names = s.get_manifold().var_names;
 			mnf.var_names = new std::string[mnf.n];
@@ -459,7 +464,7 @@ int main(int argc, char** argv) {
 			mnf.boundary.clear();
 			mnf.unknown.clear();
 			mnf.pending.clear();
-			auto path = path_buffer->pathFound;
+			auto path = path_buffer->path();
 			for(int i = 0; i < path.size(); ++i) {
 				mnf.inner.emplace_back(QualifiedBox(path[i], QualifiedBox::INNER));
 			}
