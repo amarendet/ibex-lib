@@ -326,8 +326,8 @@ int main(int argc, char** argv) {
 			string goal_point_file = goal_point ? goal_point.Get() : filename_no_ext + "-goal.mnf";
 			Manifold start_mnf(start_point_file.c_str());
 			Manifold goal_mnf(goal_point_file.c_str());
-			ibex::IntervalVector start_vector = start_mnf.inner[0].existence();
-			ibex::IntervalVector goal_vector = goal_mnf.inner[0].existence();
+			ibex::IntervalVector start_vector = start_mnf.inner.empty() ? start_mnf.boundary[0].existence() : start_mnf.inner[0].existence();
+			ibex::IntervalVector goal_vector = goal_mnf.inner.empty() ? goal_mnf.boundary[0].existence() : goal_mnf.inner[0].existence();
 			cout << "  start point:\t\t" << start_vector.mid() << endl;
 			cout << "  goal point:\t\t" << goal_vector.mid() << endl;
 			static_cast<CellBufferNeighborhood*>(buffer)->init(start_vector, goal_vector);

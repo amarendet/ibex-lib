@@ -471,6 +471,12 @@ QualifiedBox& Solver::store_sol(const QualifiedBox& sol) {
 		return manif->inner.back();
 	case QualifiedBox::BOUNDARY :
 		manif->boundary.push_back(sol);
+		{
+			CellBufferNeighborhood* cbn = dynamic_cast<CellBufferNeighborhood*>(&buffer);
+			if(cbn != nullptr) {
+				cbn->push_inner(new Cell(sol.existence()));
+			}
+		}
 		return manif->boundary.back();
 	case QualifiedBox::UNKNOWN  :
 		manif->unknown.push_back(sol);
