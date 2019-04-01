@@ -109,6 +109,10 @@ int main(int argc, const char ** argv) {
 
 	args::Positional<std::string> filename(parser, "filename", "The name of the MINIBEX file.");
 
+	args::Flag p_bisect_high(parser, "highest", "Bisect parameters with highest strategy", {"highest"});
+	args::Flag p_bisect_large(parser, "largest", "Bisect parameters with largest strategy", {"largest"});
+	args::Flag p_bisect_gold(parser, "goldsztejn", "Bisect parameters with goldsztejn strategy", {"gold"});
+
 	try {
 		parser.ParseCLI(argc, argv);
 	} catch (args::Help&) {
@@ -297,10 +301,10 @@ int main(int argc, const char ** argv) {
 		 *
 		 */
 
-		GoldsztejnSICBisector* sic_bisector = new GoldsztejnSICBisector(sys);
+		GoldsztejnSICBisector* sic_bisector = new GoldsztejnSICBisector(sys, 0.8, p_bisect_gold.Get(), p_bisect_high.Get(), p_bisect_large.Get());
 		CtcBisectActiveParameters* ctc_bisect_active = new CtcBisectActiveParameters(sys);
 		CtcFilterSICParameters* sic_filter = new CtcFilterSICParameters(sys);
-		GoldsztejnSICBisector* sic_bisector2 = new GoldsztejnSICBisector(sys);
+		GoldsztejnSICBisector* sic_bisector2 = new GoldsztejnSICBisector(sys, 0.8, p_bisect_gold.Get(), p_bisect_high.Get(), p_bisect_large.Get());
 		CtcFilterSICParameters* sic_filter2 = new CtcFilterSICParameters(sys);
 		CtcEvaluation* evaluation = new CtcEvaluation(sys);
 

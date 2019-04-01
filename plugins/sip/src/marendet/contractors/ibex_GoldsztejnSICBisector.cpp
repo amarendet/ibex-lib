@@ -28,8 +28,8 @@ using namespace std;
 
 namespace ibex {
 
-GoldsztejnSICBisector::GoldsztejnSICBisector(const SIPSystem& system, double ratio) :
-		Ctc(system.ext_nb_var), system_(system), ratio_(ratio) {
+GoldsztejnSICBisector::GoldsztejnSICBisector(const SIPSystem& system, double ratio, bool gold, bool high, bool large) :
+		Ctc(system.ext_nb_var), system_(system), ratio_(ratio), gold_(gold), high_(high), large_(large) {
 
 }
 
@@ -74,12 +74,21 @@ void GoldsztejnSICBisector::contract(IntervalVector& box, ContractContext& conte
 		const SIConstraint& constraint = system_.sic_constraints_[cst_index];
 		const int bisection_limit = 50;
 		int bisections = 0;
-		for (int i = 0; i < cacheList.size() /*&& bisections < bisection_limit*/; ++i) {
+
+		int largest_index = -1;
+		double largest_diam = 0;
+		std::vector<IntervalVector> largest_list; 
+		for (int i = 0; i < cacheList.size(); ++i) {
 			if (!cacheList[i].parameter_box.is_bisectable())
 				continue;
 			auto bisectList = bisectAllDim(cacheList[i].parameter_box);
+			if(largest_index < 0 || cacheList[i].parameter_box.max_diam() > largest_diam) {
+				largest_diam = cacheList[i].parameter_box.max_diam();
+				largest_index = i;
+				largest_list = bisectList;
+			}
 			Interval z = constraint.evaluate(box, cacheList[i].parameter_box);
-			if (std::any_of(bisectList.begin(), bisectList.end(), [&](const IntervalVector& iv) {
+			if (gold_ && std::any_of(bisectList.begin(), bisectList.end(), [&](const IntervalVector& iv) {
 				Interval newz = constraint.evaluate(box, iv);
 				return newz.diam()/z.diam() <= ratio_;
 			})) {
@@ -100,7 +109,7 @@ void GoldsztejnSICBisector::contract(IntervalVector& box, ContractContext& conte
 
 		}
 
-		if (!hasBisected || true) {
+		if (!hasBisected && high_) {
 			auto it = cacheList.begin();
 			while (it != cacheList.end() && !it->parameter_box.is_bisectable())
 				++it;
@@ -112,6 +121,12 @@ void GoldsztejnSICBisector::contract(IntervalVector& box, ContractContext& conte
 				*it = _createNewCache(constraint, box, bisectList[0]);
 				for (int j = 1; j < bisectList.size(); ++j)
 					cacheList.emplace_back(_createNewCache(constraint, box, bisectList[j]));
+			}
+		}
+		if(largest_index >= 0 && large_) {
+			cacheList[largest_index] = _createNewCache(constraint, box, largest_list[0]);
+			for (int j = 1; j < largest_list.size(); ++j) {
+				cacheList.emplace_back(_createNewCache(constraint, box, largest_list[j]));
 			}
 		}
 	}
